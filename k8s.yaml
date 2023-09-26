@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sample
+  namespace: < namespace >
+  labels:
+    name: sample
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      name: http
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    name: sample
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample
+  namespace: < namespace >
+spec:
+  selector:
+    matchLabels:
+      app: sample
+  template:
+    metadata:
+      labels:
+        app: sample
+        role: api
+        name: sample
+    spec:
+      nodeSelector:
+        role: app
+      serviceAccountName: < namespace >
+      containers:
+        - name: sample
+          image: example.com
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http-server
+---
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: jwt-auth
+  namespace: < namespace >
+spec:
+  selector:
+    matchLabels:
+      app: sample
+  jwtRules:
+    - issuer: < issuer >
+      jwksUri: < jwk >
+      forwardOriginalToken: true
+      outputPayloadToHeader: "istio-jwt-payload"
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-no-authz-header
+  namespace: < namespace >
+spec:
+  selector:
+    matchLabels:
+      app: sample
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            ports: ["8080"]
+            paths: ["/jwt"]
+    - to:
+        - operation:
+            ports: ["8080"]
+            notPaths: ["/jwt"]
+      from:
+        - source:
+            requestPrincipals: ["*"]
